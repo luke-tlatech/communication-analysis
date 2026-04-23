@@ -24,10 +24,9 @@ This tool is designed with strict data privacy in mind:
 
 Because this is a standalone HTML file, installation is incredibly simple:
 
-1. Clone or download this repository.
-2. Double-click the `index.html` file to open it in any modern web browser (Chrome, Edge, Firefox, Safari).
-3. Enter the target person's name and email addresses (comma-separated) to establish an identity profile.
-4. Drag and drop your communication CSV file into the drop zone.
+1. Go to https://luke-tlatech.github.io/communication-analysis/ in any modern web browser (Chrome, Edge, Firefox, Safari).
+2. Enter the target person's name and email addresses (comma-separated) to establish an identity profile.
+3. Drag and drop your communication CSV file into the drop zone.
 
 ## 📊 Expected CSV Format
 
