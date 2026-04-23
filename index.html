@@ -380,7 +380,7 @@ function SetupScreen({ onStart }) {
         </div>
         <div style={{marginBottom:20}}>
           <label style={{fontSize:12,fontWeight:600,color:"#444",display:"block",marginBottom:6}}>Email addresses <span style={{fontWeight:400,color:"#888"}}>(comma or space separated)</span></label>
-          <textarea value={emails} onChange={e=>setEmails(e.target.value)} placeholder={"phsmith@coupang.com, philip.e.smith@gmail.com"} rows={3} style={{fontFamily:"monospace",resize:"vertical"}} />
+          <textarea value={emails} onChange={e=>setEmails(e.target.value)} placeholder={"phsmith@domain.com, philip.e.smith@gmail.com"} rows={3} style={{fontFamily:"monospace",resize:"vertical"}} />
         </div>
         {error&&<div className="error" style={{marginBottom:12}}>{error}</div>}
         <button className="primary" onClick={submit}>Continue →</button>
