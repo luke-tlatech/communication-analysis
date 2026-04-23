@@ -1,0 +1,489 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Communication Analysis Tool</title>
+<script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+<script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+<script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; font-size: 14px; color: #1a1a1a; background: #f5f5f5; padding: 24px; }
+  h1 { font-size: 20px; font-weight: 600; margin-bottom: 4px; }
+  h2 { font-size: 16px; font-weight: 600; margin-bottom: 12px; }
+  h3 { font-size: 14px; font-weight: 600; margin-bottom: 10px; }
+  p { color: #555; font-size: 13px; line-height: 1.5; }
+  input, textarea, select { font-family: inherit; font-size: 13px; border: 1px solid #d0d0d0; border-radius: 6px; padding: 7px 10px; outline: none; width: 100%; }
+  input:focus, textarea:focus { border-color: #0078d4; box-shadow: 0 0 0 2px rgba(0,120,212,0.15); }
+  button { font-family: inherit; font-size: 12px; border: 1px solid #d0d0d0; border-radius: 6px; padding: 6px 14px; background: #fff; cursor: pointer; color: #1a1a1a; }
+  button:hover { background: #f0f0f0; }
+  button.primary { background: #0078d4; color: #fff; border-color: #0078d4; font-size: 13px; padding: 8px 20px; }
+  button.primary:hover { background: #006cbe; }
+  button.active { background: #e8e8e8; font-weight: 600; }
+  .card { background: #fff; border-radius: 8px; border: 1px solid #e0e0e0; padding: 16px 20px; }
+  .stat-card { background: #f8f8f8; border-radius: 6px; padding: 12px 16px; }
+  .stat-label { font-size: 11px; color: #666; margin-bottom: 4px; }
+  .stat-value { font-size: 22px; font-weight: 600; color: #1a1a1a; }
+  table { width: 100%; border-collapse: collapse; font-size: 12px; }
+  th { text-align: left; padding: 6px 8px; font-weight: 600; color: #555; border-bottom: 1px solid #e0e0e0; white-space: nowrap; }
+  th.center { text-align: center; }
+  td { padding: 5px 8px; border-bottom: 1px solid #f0f0f0; color: #1a1a1a; }
+  td.center { text-align: center; }
+  td.muted { color: #bbb; text-align: center; }
+  tr:nth-child(even) td { background: #fafafa; }
+  .tag { display: inline-flex; align-items: center; gap: 6px; font-size: 11px; padding: 3px 8px; background: #f0f0f0; border: 1px solid #ddd; border-radius: 4px; }
+  .tag-x { cursor: pointer; color: #888; font-size: 13px; line-height: 1; }
+  .tag-x:hover { color: #d00; }
+  .tab-bar { display: flex; gap: 2px; border-bottom: 2px solid #e0e0e0; margin-bottom: 20px; }
+  .tab { padding: 8px 16px; font-size: 13px; border: none; background: transparent; cursor: pointer; color: #666; border-bottom: 2px solid transparent; margin-bottom: -2px; border-radius: 4px 4px 0 0; }
+  .tab:hover { background: #f5f5f5; color: #1a1a1a; }
+  .tab.active { color: #0078d4; border-bottom-color: #0078d4; font-weight: 600; background: transparent; }
+  .error { background: #fff0f0; border: 1px solid #fcc; border-radius: 6px; padding: 10px 14px; color: #c00; font-size: 13px; margin-top: 12px; }
+  .success-text { color: #107c10; }
+  .drop-zone { border: 2px dashed #d0d0d0; border-radius: 8px; padding: 40px; text-align: center; cursor: pointer; }
+  .drop-zone.over { border-color: #0078d4; background: #f0f7ff; }
+  .overflow-x { overflow-x: auto; }
+  .grid-3 { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; margin-bottom: 16px; }
+  .flex-row { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+  .spacer { flex: 1; }
+  .mono { font-family: monospace; }
+  .ellipsis { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .sent-color { color: #0078d4; }
+  .recv-color { color: #107c10; }
+</style>
+</head>
+<body>
+<div id="root"></div>
+<script type="text/babel">
+const { useState, useMemo, useCallback, useRef, useEffect } = React;
+
+const COLORS = ["#0078d4","#107c10","#d83b01","#8764b8","#ca5010","#038387","#486860","#a4262c","#004b50","#32145a"];
+
+function buildIdentities(name, emailsStr) {
+  const emailList = emailsStr.split(/[,;\s]+/).map(e => e.trim().toLowerCase()).filter(e => e.includes("@"));
+  const patterns = [];
+  const n = name.trim();
+  if (n) {
+    patterns.push(new RegExp(n.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"), "i"));
+    const parts = n.split(/\s+/);
+    if (parts.length >= 2) {
+      const first = parts[0], last = parts[parts.length - 1];
+      patterns.push(new RegExp(first + "\\s*\\(" + n.replace(/[.*+?^${}()|[\]\\]/g, "\\$&") + "\\)", "i"));
+      patterns.push(new RegExp("\\b" + (first[0] + last).toLowerCase() + "\\b", "i"));
+    }
+  }
+  return { emailList, patterns };
+}
+
+function isTarget(raw, emailList, patterns) {
+  const s = raw.toLowerCase();
+  for (const id of emailList) { if (s.includes(id)) return true; }
+  for (const p of patterns) { if (p.test(raw)) return true; }
+  return false;
+}
+
+function splitCSVLine(line) {
+  const res = []; let cur = ""; let inQ = false;
+  for (let i = 0; i < line.length; i++) {
+    const c = line[i];
+    if (c === '"') { inQ = !inQ; }
+    else if (c === ',' && !inQ) { res.push(cur); cur = ""; }
+    else { cur += c; }
+  }
+  res.push(cur); return res;
+}
+
+function parseCSV(text) {
+  const lines = text.trim().split(/\r?\n/);
+  if (lines.length < 2) return [];
+  const headers = splitCSVLine(lines[0]).map(h => h.trim().replace(/^"|"$/g, "").toLowerCase());
+  const findCol = (...terms) => { for (const t of terms) { const i = headers.findIndex(h => h.includes(t)); if (i !== -1) return i; } return -1; };
+  const iFrom = findCol("from"), iTo = findCol("to"), iCC = findCol("cc"), iBCC = findCol("bcc"), iDate = findCol("sent date","date");
+  const rows = [];
+  for (let i = 1; i < lines.length; i++) {
+    const cols = splitCSVLine(lines[i]);
+    if (cols.length < 3) continue;
+    const get = j => j >= 0 && j < cols.length ? cols[j].replace(/^"|"$/g,"").trim() : "";
+    const d = new Date(get(iDate));
+    if (isNaN(d.getTime())) continue;
+    const mmyyyy = String(d.getMonth()+1).padStart(2,"0") + "/" + d.getFullYear();
+    rows.push({ from: get(iFrom), to: get(iTo), cc: get(iCC), bcc: get(iBCC), mmyyyy });
+  }
+  return rows;
+}
+
+function extractEmail(str) {
+  const m = str.match(/[a-zA-Z0-9._%+\-]+@[a-zA-Z0-9.\-]+\.[a-zA-Z]{2,}/);
+  return m ? m[0].toLowerCase() : null;
+}
+
+function normalizeContact(raw) {
+  const email = extractEmail(raw);
+  if (email) return email;
+  return raw.replace(/\(.*?\)/g,"").replace(/<.*?>/g,"").replace(/\[.*?\]/g,"").trim() || raw.trim();
+}
+
+function splitField(str) { return str.split(/;/).map(s => s.trim()).filter(Boolean); }
+function getDomain(c) { return c.includes("@") ? c.split("@")[1] : "non-email"; }
+
+function sortMonths(months) {
+  return [...months].sort((a,b) => {
+    const [ma,ya] = a.split("/"), [mb,yb] = b.split("/");
+    return new Date(+ya,+ma-1) - new Date(+yb,+mb-1);
+  });
+}
+
+function analyze(rows, emailList, patterns) {
+  const sent = {}, received = {};
+  for (const r of rows) {
+    const fromParts = splitField(r.from);
+    const allRecRaw = [...splitField(r.to),...splitField(r.cc),...splitField(r.bcc)];
+    const isSender = fromParts.some(f => isTarget(f, emailList, patterns));
+    const isRecipient = allRecRaw.some(f => isTarget(f, emailList, patterns));
+    if (isSender) {
+      const recs = [...new Set(allRecRaw.filter(f => !isTarget(f,emailList,patterns)).map(normalizeContact).filter(Boolean))];
+      for (const rec of recs) { if (!sent[r.mmyyyy]) sent[r.mmyyyy]={}; sent[r.mmyyyy][rec]=(sent[r.mmyyyy][rec]||0)+1; }
+    }
+    if (isRecipient && !isSender) {
+      const senders = [...new Set(fromParts.filter(f => !isTarget(f,emailList,patterns)).map(normalizeContact).filter(Boolean))];
+      for (const s of senders) { if (!received[r.mmyyyy]) received[r.mmyyyy]={}; received[r.mmyyyy][s]=(received[r.mmyyyy][s]||0)+1; }
+    }
+  }
+  return { sent, received };
+}
+
+function aggregateByDomain(data) {
+  const out = {};
+  for (const [month,map] of Object.entries(data)) {
+    out[month]={};
+    for (const [k,v] of Object.entries(map)) { const d=getDomain(k); out[month][d]=(out[month][d]||0)+v; }
+  }
+  return out;
+}
+
+function flatTotals(data) {
+  const tot = {};
+  for (const m of Object.values(data)) for (const [k,v] of Object.entries(m)) tot[k]=(tot[k]||0)+v;
+  return tot;
+}
+
+function downloadBlob(blob, filename) {
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href=url; a.download=filename; a.target="_blank"; a.rel="noopener";
+  document.body.appendChild(a); a.click();
+  setTimeout(()=>{ document.body.removeChild(a); URL.revokeObjectURL(url); },200);
+}
+
+function sheetToXML(data, months, colLabel, sheetName) {
+  const sorted = sortMonths(months);
+  const totals = flatTotals(data);
+  const entries = Object.entries(totals).sort((a,b)=>b[1]-a[1]);
+  const esc = s => String(s).replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;");
+  const cell = (val, isNum) => isNum
+    ? `<Cell><Data ss:Type="Number">${val}</Data></Cell>`
+    : `<Cell><Data ss:Type="String">${esc(val)}</Data></Cell>`;
+  const headerRow = "<Row>" + [colLabel,...sorted,"Total"].map(h=>cell(h,false)).join("") + "</Row>";
+  const dataRows = entries.map(([k])=>"<Row>"+[k,...sorted.map(m=>(data[m]||{})[k]||0),totals[k]].map((v,i)=>cell(v,i>0)).join("")+"</Row>").join("");
+  return `<Worksheet ss:Name="${sheetName.slice(0,31)}"><Table>${headerRow}${dataRows}</Table></Worksheet>`;
+}
+
+function twoWaySheetXML(sentData, receivedData, subjectName) {
+  const sentTot=flatTotals(sentData), recTot=flatTotals(receivedData);
+  const all=[...new Set([...Object.keys(sentTot),...Object.keys(recTot)])].sort((a,b)=>((sentTot[b]||0)+(recTot[b]||0))-((sentTot[a]||0)+(recTot[a]||0)));
+  const esc = s => String(s).replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;");
+  const sc = (v,n)=>n?`<Cell><Data ss:Type="Number">${v}</Data></Cell>`:`<Cell><Data ss:Type="String">${esc(v)}</Data></Cell>`;
+  const hdr="<Row>"+["Contact","Sent by "+subjectName,"Received by "+subjectName,"Total"].map(h=>sc(h,false)).join("")+"</Row>";
+  const rows=all.map(e=>{const s=sentTot[e]||0,r=recTot[e]||0;return"<Row>"+[sc(e,false),sc(s,true),sc(r,true),sc(s+r,true)].join("")+"</Row>";}).join("");
+  return `<Worksheet ss:Name="Two-Way Summary"><Table>${hdr}${rows}</Table></Worksheet>`;
+}
+
+function exportAllExcel(sentData,receivedData,sentMonths,receivedMonths,subjectName) {
+  const fn = subjectName.split(" ")[0];
+  const xml='<?xml version="1.0"?><?mso-application progid="Excel.Sheet"?>'
+    +'<Workbook xmlns="urn:schemas-microsoft-com:office:spreadsheet" xmlns:ss="urn:schemas-microsoft-com:office:spreadsheet">'
+    +sheetToXML(sentData,sentMonths,"Recipient","Sent by "+fn)
+    +sheetToXML(receivedData,receivedMonths,"Sender","Received by "+fn)
+    +twoWaySheetXML(sentData,receivedData,subjectName)
+    +'</Workbook>';
+  downloadBlob(new Blob([xml],{type:"application/vnd.ms-excel"}), subjectName.replace(/\s+/g,"-").toLowerCase()+"-communication-analysis.xls");
+}
+
+function BarChart({ data }) {
+  const ref = useRef();
+  const totals = flatTotals(data);
+  const top10 = Object.entries(totals).sort((a,b)=>b[1]-a[1]).slice(0,10).map(([k])=>k);
+  useEffect(()=>{
+    const c=ref.current; if(!c) return;
+    const ctx=c.getContext("2d"), W=c.width, H=c.height, pad={top:24,right:20,bottom:100,left:48};
+    ctx.clearRect(0,0,W,H);
+    if(!top10.length) return;
+    const maxV=Math.max(...top10.map(k=>totals[k]),1);
+    const bw=(W-pad.left-pad.right)/top10.length;
+    top10.forEach((k,i)=>{
+      const bh=(totals[k]/maxV)*(H-pad.top-pad.bottom), x=pad.left+i*bw+bw*0.1, y=H-pad.bottom-bh;
+      ctx.fillStyle=COLORS[i%COLORS.length]; ctx.fillRect(x,y,bw*0.8,bh);
+      ctx.fillStyle="#444"; ctx.font="10px sans-serif"; ctx.textAlign="center"; ctx.fillText(totals[k],x+bw*0.4,y-4);
+      ctx.fillStyle="#666"; ctx.save(); ctx.translate(x+bw*0.4,H-pad.bottom+8); ctx.rotate(-Math.PI/4); ctx.textAlign="right";
+      ctx.fillText(k.length>24?k.slice(0,22)+"…":k,0,0); ctx.restore();
+    });
+    for(let i=0;i<=4;i++){
+      const v=Math.round(maxV*i/4), y=H-pad.bottom-(v/maxV)*(H-pad.top-pad.bottom);
+      ctx.fillStyle="#999"; ctx.font="10px sans-serif"; ctx.textAlign="right"; ctx.fillText(v,pad.left-4,y+3);
+      ctx.strokeStyle="#eee"; ctx.beginPath(); ctx.moveTo(pad.left,y); ctx.lineTo(W-pad.right,y); ctx.stroke();
+    }
+  },[data]);
+  return <canvas ref={ref} width={680} height={280} style={{width:"100%",height:"auto"}} />;
+}
+
+function LineChart({ data, months }) {
+  const ref = useRef();
+  const sorted = sortMonths(months);
+  const totals = flatTotals(data);
+  const top5 = Object.entries(totals).sort((a,b)=>b[1]-a[1]).slice(0,5).map(([k])=>k);
+  useEffect(()=>{
+    const c=ref.current; if(!c) return;
+    const ctx=c.getContext("2d"), W=c.width, H=c.height, pad={top:20,right:140,bottom:44,left:48};
+    ctx.clearRect(0,0,W,H);
+    if(!top5.length||!sorted.length) return;
+    const maxV=Math.max(...top5.flatMap(k=>sorted.map(m=>(data[m]||{})[k]||0)),1);
+    const xStep=sorted.length>1?(W-pad.left-pad.right)/(sorted.length-1):0;
+    for(let i=0;i<=4;i++){
+      const v=Math.round(maxV*i/4), y=H-pad.bottom-(v/maxV)*(H-pad.top-pad.bottom);
+      ctx.fillStyle="#999"; ctx.font="10px sans-serif"; ctx.textAlign="right"; ctx.fillText(v,pad.left-4,y+3);
+      ctx.strokeStyle="#eee"; ctx.beginPath(); ctx.moveTo(pad.left,y); ctx.lineTo(W-pad.right,y); ctx.stroke();
+    }
+    sorted.forEach((m,i)=>{ const x=pad.left+i*xStep; ctx.fillStyle="#999"; ctx.font="9px sans-serif"; ctx.textAlign="center"; ctx.fillText(m,x,H-pad.bottom+14); });
+    top5.forEach((k,ki)=>{
+      const color=COLORS[ki%COLORS.length];
+      ctx.strokeStyle=color; ctx.lineWidth=2; ctx.beginPath();
+      sorted.forEach((m,i)=>{ const v=(data[m]||{})[k]||0,x=pad.left+i*xStep,y=H-pad.bottom-(v/maxV)*(H-pad.top-pad.bottom); i===0?ctx.moveTo(x,y):ctx.lineTo(x,y); });
+      ctx.stroke();
+      const lv=(data[sorted[sorted.length-1]]||{})[k]||0, lx=pad.left+(sorted.length-1)*xStep, ly=H-pad.bottom-(lv/maxV)*(H-pad.top-pad.bottom);
+      ctx.fillStyle=color; ctx.font="10px sans-serif"; ctx.textAlign="left";
+      ctx.fillText(k.length>22?k.slice(0,20)+"…":k,lx+6,ly+3);
+    });
+  },[data,months]);
+  return <canvas ref={ref} width={680} height={210} style={{width:"100%",height:"auto"}} />;
+}
+
+function DataTable({ data, months, label, groupBy }) {
+  const [search,setSearch]=useState("");
+  const totals=flatTotals(data), sorted=sortMonths(months);
+  const filtered=Object.entries(totals).filter(([k])=>k.toLowerCase().includes(search.toLowerCase())).sort((a,b)=>b[1]-a[1]);
+  return (
+    <div>
+      <input placeholder={"Filter by "+groupBy+"..."} value={search} onChange={e=>setSearch(e.target.value)} style={{marginBottom:10}} />
+      <div className="overflow-x">
+        <table>
+          <thead><tr>
+            <th style={{minWidth:180}}>{label}</th>
+            {sorted.map(m=><th key={m} className="center" style={{minWidth:58}}>{m}</th>)}
+            <th className="center" style={{minWidth:50}}>Total</th>
+          </tr></thead>
+          <tbody>
+            {filtered.map(([k,tot])=>(
+              <tr key={k}>
+                <td className="ellipsis" style={{maxWidth:200}} title={k}>{k}</td>
+                {sorted.map(m=>{ const c=(data[m]||{})[k]||0; return <td key={m} className={c>0?"center":"muted"}>{c>0?c:"–"}</td>; })}
+                <td className="center" style={{fontWeight:600}}>{tot}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  );
+}
+
+function Section({ title, data, domainData, months, label, subjectName }) {
+  const [view,setView]=useState("table"), [groupBy,setGroupBy]=useState("email");
+  const activeData=groupBy==="domain"?domainData:data;
+  const totals=flatTotals(activeData);
+  const grandTotal=Object.values(totals).reduce((a,b)=>a+b,0);
+  if(!months.length) return <p style={{marginBottom:"2rem"}}>No data found.</p>;
+  return (
+    <div style={{marginBottom:"2rem"}}>
+      <div className="flex-row" style={{marginBottom:12}}>
+        <h2 style={{margin:0}}>{title}</h2>
+        <div className="spacer"/>
+        <div className="flex-row" style={{gap:4}}>
+          {["table","bar","line"].map(v=><button key={v} onClick={()=>setView(v)} className={view===v?"active":""}>{v.charAt(0).toUpperCase()+v.slice(1)}</button>)}
+        </div>
+      </div>
+      <div className="grid-3">
+        {[["Total messages",grandTotal],["Unique "+groupBy+"s",Object.keys(totals).length],["Months active",months.length]].map(([l,v])=>(
+          <div key={l} className="stat-card"><div className="stat-label">{l}</div><div className="stat-value">{v.toLocaleString()}</div></div>
+        ))}
+      </div>
+      <div className="flex-row" style={{marginBottom:12}}>
+        <span style={{fontSize:12,color:"#666"}}>Group by:</span>
+        {["email","domain"].map(g=><button key={g} onClick={()=>setGroupBy(g)} className={groupBy===g?"active":""}>{g.charAt(0).toUpperCase()+g.slice(1)}</button>)}
+      </div>
+      {view==="table"&&<DataTable data={activeData} months={months} label={label} groupBy={groupBy}/>}
+      {view==="bar"&&<BarChart data={activeData}/>}
+      {view==="line"&&<LineChart data={activeData} months={months}/>}
+    </div>
+  );
+}
+
+function TwoWayTable({ sentData, receivedData, subjectName }) {
+  const sentTot=flatTotals(sentData), recTot=flatTotals(receivedData);
+  const all=[...new Set([...Object.keys(sentTot),...Object.keys(recTot)])];
+  const combined=all.map(e=>({email:e,sent:sentTot[e]||0,received:recTot[e]||0,total:(sentTot[e]||0)+(recTot[e]||0)})).sort((a,b)=>b.total-a.total);
+  const [search,setSearch]=useState("");
+  const filtered=combined.filter(r=>r.email.toLowerCase().includes(search.toLowerCase()));
+  return (
+    <div>
+      <input placeholder="Filter by contact..." value={search} onChange={e=>setSearch(e.target.value)} style={{marginBottom:10}} />
+      <div className="overflow-x">
+        <table>
+          <thead><tr>
+            <th>Contact</th>
+            <th className="center">Sent by {subjectName}</th>
+            <th className="center">Received by {subjectName}</th>
+            <th className="center">Total</th>
+          </tr></thead>
+          <tbody>
+            {filtered.map((r,i)=>(
+              <tr key={r.email}>
+                <td className="ellipsis" style={{maxWidth:240}} title={r.email}>{r.email}</td>
+                <td className={r.sent>0?"center sent-color":"muted"}>{r.sent||"–"}</td>
+                <td className={r.received>0?"center recv-color":"muted"}>{r.received||"–"}</td>
+                <td className="center" style={{fontWeight:600}}>{r.total}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  );
+}
+
+function SetupScreen({ onStart }) {
+  const [name,setName]=useState(""), [emails,setEmails]=useState(""), [error,setError]=useState("");
+  const submit=()=>{
+    if(!name.trim()){setError("Please enter a full name.");return;}
+    const list=emails.split(/[,;\s]+/).map(e=>e.trim()).filter(e=>e.includes("@"));
+    if(!list.length){setError("Please enter at least one valid email address.");return;}
+    onStart(name.trim(),emails);
+  };
+  return (
+    <div style={{maxWidth:520,margin:"0 auto"}}>
+      <div className="card">
+        <h1 style={{marginBottom:6}}>Communication Analysis</h1>
+        <p style={{marginBottom:24}}>Enter the person to analyze, then upload your communications CSV.</p>
+        <div style={{marginBottom:16}}>
+          <label style={{fontSize:12,fontWeight:600,color:"#444",display:"block",marginBottom:6}}>Full name</label>
+          <input value={name} onChange={e=>setName(e.target.value)} placeholder="e.g. Philip Smith" onKeyDown={e=>e.key==="Enter"&&submit()} />
+        </div>
+        <div style={{marginBottom:20}}>
+          <label style={{fontSize:12,fontWeight:600,color:"#444",display:"block",marginBottom:6}}>Email addresses <span style={{fontWeight:400,color:"#888"}}>(comma or space separated)</span></label>
+          <textarea value={emails} onChange={e=>setEmails(e.target.value)} placeholder={"phsmith@coupang.com, philip.e.smith@gmail.com"} rows={3} style={{fontFamily:"monospace",resize:"vertical"}} />
+        </div>
+        {error&&<div className="error" style={{marginBottom:12}}>{error}</div>}
+        <button className="primary" onClick={submit}>Continue →</button>
+      </div>
+    </div>
+  );
+}
+
+function App() {
+  const [subject,setSubject]=useState(null);
+  const [rows,setRows]=useState(null);
+  const [fileName,setFileName]=useState("");
+  const [error,setError]=useState("");
+  const [dragging,setDragging]=useState(false);
+  const [tab,setTab]=useState("sent");
+
+  const identityInfo=useMemo(()=>subject?buildIdentities(subject.name,subject.emails):null,[subject]);
+
+  const processText=useCallback((text,name)=>{
+    setError("");
+    try {
+      const parsed=parseCSV(text);
+      if(!parsed.length){setError("No valid rows found. Expected columns: Communication From, Communication To, Communication Cc, Communication Bcc, Sent Date Time");return;}
+      setRows(parsed); setFileName(name||"");
+    } catch(e){setError("Parse error: "+e.message);}
+  },[]);
+
+  const onFile=e=>{const f=e.target.files[0];if(!f)return;const r=new FileReader();r.onerror=()=>setError("File read failed.");r.onload=ev=>processText(ev.target.result,f.name);r.readAsText(f);};
+  const onDrop=e=>{e.preventDefault();setDragging(false);try{const f=e.dataTransfer.files[0];if(!f)return;const r=new FileReader();r.onerror=()=>setError("File read failed.");r.onload=ev=>processText(ev.target.result,f.name);r.readAsText(f);}catch(err){setError("Drop error: "+err.message);}};
+
+  const result=useMemo(()=>{
+    if(!rows||!identityInfo)return null;
+    const {emailList,patterns}=identityInfo;
+    const {sent,received}=analyze(rows,emailList,patterns);
+    return{sent,received,sentDomain:aggregateByDomain(sent),receivedDomain:aggregateByDomain(received),sentMonths:Object.keys(sent),receivedMonths:Object.keys(received)};
+  },[rows,identityInfo]);
+
+  const matchCount=useMemo(()=>{
+    if(!rows||!identityInfo)return 0;
+    const{emailList,patterns}=identityInfo;
+    return rows.filter(r=>isTarget(r.from+" "+r.to+" "+r.cc+" "+r.bcc,emailList,patterns)).length;
+  },[rows,identityInfo]);
+
+  if(!subject) return <SetupScreen onStart={(name,emails)=>setSubject({name,emails})}/>;
+
+  return (
+    <div style={{maxWidth:900,margin:"0 auto"}}>
+      <div className="card">
+        <div className="flex-row" style={{marginBottom:16}}>
+          <div>
+            <h1 style={{marginBottom:4}}>Communication Analysis</h1>
+            <p style={{margin:0}}>{subject.name} · {identityInfo.emailList.length} address{identityInfo.emailList.length!==1?"es":""}</p>
+          </div>
+          <div className="spacer"/>
+          <div className="flex-row">
+            {result&&<button className="primary" onClick={()=>exportAllExcel(result.sent,result.received,result.sentMonths,result.receivedMonths,subject.name)}>Download Excel ↓</button>}
+            <button onClick={()=>{setSubject(null);setRows(null);setFileName("");setTab("sent");}}>New analysis</button>
+          </div>
+        </div>
+
+        {!rows?(
+          <div className={"drop-zone"+(dragging?" over":"")}
+            onDragOver={e=>{e.preventDefault();setDragging(true);}} onDragLeave={()=>setDragging(false)} onDrop={onDrop}>
+            <p style={{marginBottom:12}}>Drag & drop your CSV here, or</p>
+            <label style={{cursor:"pointer"}}>
+              <input type="file" accept=".csv" onChange={onFile} style={{display:"none"}}/>
+              <button onClick={()=>{}} style={{pointerEvents:"none"}}>Choose file</button>
+            </label>
+            <p style={{marginTop:16,fontSize:11,color:"#999"}}>Expected columns: Syllo ID · Communication From · Communication To · Communication Cc · Communication Bcc · Sent Date Time</p>
+          </div>
+        ):(
+          <>
+            <div className="flex-row" style={{marginBottom:16}}>
+              <p style={{margin:0}}>{fileName&&<span>{fileName} · </span>}{rows.length.toLocaleString()} rows · <span className="success-text">{matchCount.toLocaleString()} matched {subject.name}</span></p>
+              <div className="spacer"/>
+              <button onClick={()=>{setRows(null);setFileName("");setTab("sent");}}>Load new file</button>
+            </div>
+            <div className="tab-bar">
+              {["sent","received","two-way"].map(t=>(
+                <button key={t} className={"tab"+(tab===t?" active":"")} onClick={()=>setTab(t)}>
+                  {t==="sent"?"Sent":t==="received"?"Received":"Two-way summary"}
+                </button>
+              ))}
+            </div>
+            {tab==="sent"&&result&&<Section title="Sent — recipients by month" data={result.sent} domainData={result.sentDomain} months={result.sentMonths} label="Recipient" subjectName={subject.name}/>}
+            {tab==="received"&&result&&<Section title="Received — senders by month" data={result.received} domainData={result.receivedDomain} months={result.receivedMonths} label="Sender" subjectName={subject.name}/>}
+            {tab==="two-way"&&result&&(
+              <div>
+                <h2>Two-way contact summary</h2>
+                <p style={{marginBottom:14}}>All contacts {subject.name} has sent to and/or received from.</p>
+                <TwoWayTable sentData={result.sent} receivedData={result.received} subjectName={subject.name}/>
+              </div>
+            )}
+          </>
+        )}
+        {error&&<div className="error">{error}</div>}
+      </div>
+    </div>
+  );
+}
+
+const root = ReactDOM.createRoot(document.getElementById("root"));
+root.render(<App />);
+</script>
+</body>
+</html>
